@@ -45,7 +45,8 @@ if winpipe == nil then
 end
 
 local Lib = require("extensions.sn_mod_support_apis.ui.named_pipes.Library")
-FIFO = Lib.FIFO
+local FIFO = Lib.FIFO
+
 -- Pass along any debug params.
 Lib.debug.print_to_log = debug.print_to_log
 
