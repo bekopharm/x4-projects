@@ -27,9 +27,21 @@ ffi.cdef[[
 
 -- Load in the winpipe dll, which has been set up with the necessary
 -- Windows functions for working with pipes.
-local winpipe = require("extensions.sn_mod_support_apis.lua.c_library.winpipe")
+local winpipe = false
+
+if package.config:sub(1,1) == "\\" then
+    DebugError("Looks like Windows, loading winpipe")
+    winpipe = require("extensions.sn_mod_support_apis.lua.c_library.winpipe")
+elseif package.config:sub(1,1) == "/" then
+    DebugError("Looks like Linux, loading linpipe")
+    winpipe = require("extensions.sn_mod_support_apis.lua.c_library.linpipe")
+end
 -- If not on windows, the above will be nil, and the pipe will be treated
 -- as disconnected.
+
+if winpipe == false then
+    DebugError("Loading pipe failed")
+end
 
 local Lib = require("extensions.sn_mod_support_apis.lua.named_pipes.Library")
 FIFO = Lib.FIFO
