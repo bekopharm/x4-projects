@@ -83,9 +83,43 @@ TODO:
       <set_value exact="{68537, 1034}" name="Text.$Status" />
       <set_value exact="{68537, 1035}" name="Text.$pipe_mouseover" />
       <set_value exact="{68537, 1036}" name="Text.$status_mouseover" />
+      <set_value exact="{68537, 1037}" name="Text.$pipe_prefix" />
+      <set_value exact="{68537, 1038}" name="Text.$pipe_prefix_mouseover" />
     </actions>
   </library>
 
+
+  <!--Load in userdata, which is shared across saves.
+    Value saves in userdata:
+    - Globals.$pipe_name_prefix_linux
+  -->
+  <library name="Load_Userdata">
+    <actions>
+      <!--Set the default to init empty entries.-->
+      <run_actions ref="md.Userdata.Read" result="$userdata">
+        <param name="Owner" value="'sn_mod_support_apis'"/>
+        <param name="Key" value="'lin_pipe'"/>
+        <param name="Default" value="table[
+          $pipe_name_prefix_linux = '/tmp,
+        ]"/>
+      </run_actions>
+      <!--Extract fields.-->
+      <set_value name="Globals.$pipe_name_prefix_linux" exact="$userdata.$pipe_name_prefix_linux"/>
+    </actions>
+  </library>
+
+  <!--Trigger a lua update of userdata, setting it to save to uidata.xml.-->
+  <library name="Update_Userdata">
+    <actions>
+      <run_actions ref="md.Userdata.Write">
+          <param name="Owner" value="'sn_mod_support_apis'"/>
+          <param name="Key" value="'lin_pipe'"/>
+          <param name="Value" value="table[
+            $pipe_name_prefix_linux = Globals.$pipe_name_prefix_linux,
+          ]"/>
+      </run_actions>
+    </actions>
+  </library>
 
   <!--
     Static cue that holds some shared state information or constants.
@@ -109,6 +143,11 @@ TODO:
       - String, prefix to add to all pipe names to construct the OS path.
       - On windows, this is "\\.\pipe\"
       - Not used; prefix attached in lua to simplify some signalling.
+                      
+    * $pipe_name_prefix_linux
+      - String, prefix to add to all pipe names to construct the OS path.
+      - On Linux, this is "/full/path/to/.config/EgoSoft/X4/[userid/]save"
+      - Used.
       
     * $pipe_status_cues
       - List of registered top level cues handling specific pipes.
@@ -129,18 +168,22 @@ TODO:
     <actions>
       <!--Load any text.-->
       <include_actions ref="Load_Text"/>
-      
+
       <!-- Counter reset is optional, but include for init. -->
       <set_value name="Globals.$access_counter" exact="0"/>
       <set_value name="Globals.$reserved_ids" exact="table[]"/>
       <!-- Prefix to add to all pipe names. -->
       <set_value name="Globals.$pipe_name_prefix" exact="'\\\\.\\pipe\\'" />
+      <set_value name="Globals.$pipe_name_prefix_linux" exact="'/tmp'" />
       <set_value name="Globals.$pipe_status_cues" exact="[]"/>
       <!-- Debug printout chance; generally 0 or 100; ego style naming. -->
       <set_value name="Globals.$DebugChance" exact="0" />
+
+      <!--Load in any saved userdata.-->
+      <include_actions ref="Load_Userdata"/>
     </actions>
   </library>
-      
+
   <!--
     Reset some vars and send a signal when the lua reloads.
     This will happen on savegame reloads as well, since those trigger
@@ -837,6 +880,25 @@ TODO:
   </cue>
 
   <!--
+    Callback for setting new socket path on linux
+    -->
+  <cue name="Handle_Socket_Path_Changed_Action" instantiate="true">
+    <conditions>
+      <event_cue_signalled />
+    </conditions>
+    <actions>
+      <do_if value="event.param.$id == 'pipe_name_prefix_linux'">
+        <set_value name="Globals.$pipe_name_prefix_linux" exact="event.param.$text"/>
+        <debug_text text="'New socket path is: %s'.[@Globals.$pipe_name_prefix_linux]"
+                chance="Globals.$DebugChance" filter="general"/>
+
+        <!--Need to update userdata.-->
+        <include_actions ref="Update_Userdata"/>
+      </do_if>
+    </actions>
+  </cue>
+
+  <!--
       Callback for building the options menu.
     -->
   <cue name="Build_Options_Menu" instantiate="true" namespace="this">
@@ -862,6 +924,43 @@ TODO:
             $text          = Text.$Status, 
             $mouseOverText = Text.$status_mouseover,
             $cellBGColor   = 'Color.optionsmenu_cell_background',
+            ]"/>
+      <signal_cue_instantly cue="md.Simple_Menu_API.Add_Row"/>
+      <signal_cue_instantly
+        cue="md.Simple_Menu_API.Make_Text"
+        param = "table[
+            $col           = 1,
+            $text          = Text.$pipe_prefix + ' Windows',
+            $mouseOverText = Text.$pipe_prefix_mouseover,
+            $cellBGColor   = 'Helper.color.transparent60',
+            ]"/>
+      <signal_cue_instantly
+        cue="md.Simple_Menu_API.Make_Text"
+        param = "table[
+            $col           = 2,
+            $text          = @Globals.$pipe_name_prefix,
+            $mouseOverText = Text.$pipe_prefix_mouseover,
+            $cellBGColor   = 'Helper.color.transparent60',
+            ]"/>
+      <signal_cue_instantly cue="md.Simple_Menu_API.Add_Row"/>
+      <signal_cue_instantly
+        cue="md.Simple_Menu_API.Make_Text"
+        param = "table[
+            $col           = 1,
+            $text          = Text.$pipe_prefix + ' Linux',
+            $mouseOverText = Text.$pipe_prefix_mouseover,
+            $cellBGColor   = 'Helper.color.transparent60',
+            ]"/>
+      <signal_cue_instantly
+        cue="md.Simple_Menu_API.Make_EditBox"
+        param = "table[
+            $col           = 2,
+            $id            = 'pipe_name_prefix_linux',
+            $text          = table[ $text = '' + Globals.$pipe_name_prefix_linux, $color = 'Helper.color.white' ],
+            $defaultText   = '/full/path/to/.config/EgoSoft/X4/[userid/]save',
+            $onTextChanged = Handle_Socket_Path_Changed_Action,
+            $mouseOverText = Text.$pipe_prefix_mouseover,
+            $cellBGColor   = 'Helper.color.transparent60',
             ]"/>
       
       <!-- Loop over registered pipe handler cues. -->

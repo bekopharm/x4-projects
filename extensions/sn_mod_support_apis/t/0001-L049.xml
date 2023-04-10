@@ -23,7 +23,9 @@
   <t id="1034">Status</t>
   <t id="1035">Name of the pipe</t>
   <t id="1036">If the pipe is connected</t>
-  
+  <t id="1037">Pipe Prefix</t>
+  <t id="1038">Der absolute Pfad zur Pipe</t>
+
   <t id="1040">Deaktiviere "Interact Menu API"</t>
   <t id="1041">Aktiviere "Interact API" Debug Logs</t>
 
