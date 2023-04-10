@@ -37,7 +37,6 @@ function Pipe:create(L, pipe_name)
             DebugError("[Linux_Pipe][" ..pipe.socket_filename .."] "..msg)
         end
     end
-
     -- shutdown helper for a client, called from various places when a client is detected as dead
     pipe.shutdown = function(index)
         CallEventScripts("directChatMessageReceived", "LinPipe: Lost a connection :(")
