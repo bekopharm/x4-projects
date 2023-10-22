@@ -100,7 +100,7 @@ TODO:
         <param name="Owner" value="'sn_mod_support_apis'"/>
         <param name="Key" value="'lin_pipe'"/>
         <param name="Default" value="table[
-          $pipe_name_prefix_linux = '/tmp,
+          $pipe_name_prefix_linux = '/tmp',
         ]"/>
       </run_actions>
       <!--Extract fields.-->
