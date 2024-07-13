@@ -961,6 +961,7 @@ TODO:
             $onTextChanged = Handle_Socket_Path_Changed_Action,
             $mouseOverText = Text.$pipe_prefix_mouseover,
             $cellBGColor   = 'Helper.color.transparent60',
+            $maxChars      = 200,
             ]"/>
       
       <!-- Loop over registered pipe handler cues. -->
