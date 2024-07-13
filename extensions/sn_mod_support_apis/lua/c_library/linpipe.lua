@@ -100,10 +100,21 @@ local function require_socket_unix()
         package.cpath = "extensions/sn_mod_support_apis/lua/c_library/?.so;?.so;"..package.cpath
     end
 
-    local socket = require("socket.core")
+    DebugError("[LinPipe] looking for socket lib in the following paths: " ..package.cpath)
+
+    local status_socket, socket = pcall(require, "socket.core")
+    if(status_socket) then
+        DebugError("[LinPipe] socket/core.so was loaded")
+    else
+        DebugError("[LinPipe] FATAL: socket/core.so could not be loaded - is lua5.1-socket installed?")
+        CallEventScripts("directChatMessageReceived", "LinPipe: socket/core.so could not be loaded")
+        L.last_error = L.ERROR_MISSING_LIBRARY
+        socket = nil
+        return nil
+    end
 
     if socket == nil then
-        DebugError("[LinPipe] FATAL: LuaSocket not found - is lua5.1-socket installed?")
+        DebugError("[LinPipe] FATAL: socket lib is not useable - is lua5.1-socket installed?")
         L.last_error = L.ERROR_MISSING_LIBRARY
     else
         if socket._DEBUG then
@@ -114,11 +125,16 @@ local function require_socket_unix()
         CallEventScripts("directChatMessageReceived", "LinPipe: "..socket._VERSION.." found")
     end
 
-    local socket_unix = require("socket.unix")
+    local status_socket_unix, socket_unix = pcall(require, "socket.unix")
 
-    if socket_unix == nil then
-        log('LuaSocket.unix not found - is lua5.1-socket installed?')
+    if(status_socket_unix) then
+        DebugError("[LinPipe] socket/unix.so was loaded")
+    else
+        DebugError("[LinPipe] FATAL: socket/unix.so could not be loaded - is lua5.1-socket installed?")
+        CallEventScripts("directChatMessageReceived", "LinPipe: socket/unix.so could not be loaded")
         L.last_error = L.ERROR_MISSING_LIBRARY
+        socket_unix = nil
+        return nil
     end
 
     return socket_unix
