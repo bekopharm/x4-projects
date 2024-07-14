@@ -8,22 +8,36 @@ local Pipe = {}
 Pipe.__index = Pipe
 
 -- Creates a socket object with the expected functions write(message) close() read()
-function Pipe:create(L)
-    local pipe = {}
-    setmetatable(pipe,Pipe)
+function Pipe:create(L, pipe_name)
+    local pipe = {
+        log = function(msg)
+            if pipe.L.debug.print_to_log then
+                DebugError("[Linux_Pipe][" ..pipe.socket_filename .."] "..msg)
+            end
+        end
+
+    }
+
     -- keep a reference to upstream errors
+    setmetatable(pipe, Pipe)
+
+    pipe.name = pipe_name
+    pipe.read_unix_socket_co = false
     pipe.L = L
-    pipe.server = L.server
-    pipe.server:settimeout(0)
-    pipe.clients = {}
+    pipe.server = L.sockets[pipe_name].server
+    pipe.clients = L.sockets[pipe_name].clients
     pipe.last_no_client_time = nil
-    pipe.socket_filename = L.socket_filename
+    pipe.socket_filename = L.sockets[pipe_name].socket_filename
+    pipe.socket = require("socket.core")
+
+    pipe.server:settimeout(0)
     -- log helper
     pipe.log = function(msg)
         if pipe.L.debug.print_to_log then
             DebugError("[Linux_Pipe][" ..pipe.socket_filename .."] "..msg)
         end
     end
+
     -- shutdown helper for a client, called from various places when a client is detected as dead
     pipe.shutdown = function(index)
         CallEventScripts("directChatMessageReceived", "LinPipe: Lost a connection :(")
@@ -33,10 +47,16 @@ function Pipe:create(L)
         client:shutdown("both")
         table.remove(pipe.clients, index)
     end
+
+    if pipe.read_unix_socket_co then
+        pipe.log('read_unix_socket_co exists!!11')
+    end
+    
     pipe.read_unix_socket_co = coroutine.create(function()
         local status = "closed"
         -- we checked and cached that in linpipe.lua
-        local socket = require("socket.core")
+        local server = L.sockets[pipe.name].server
+        pipe.log("Preparing new coroutine for server " ..pipe.name)
 
         -- Return a key with the given value (or nil if not found).  If there are
         -- multiple keys with that value, the particular key returned is arbitrary.
@@ -51,19 +71,32 @@ function Pipe:create(L)
             status = ""
             writable_sockets = {}
             -- err: timeout|closed|nil
-            new_client, err = pipe.server:accept()
 
-            if err ~= nil then
-                -- No new connection :(
-            elseif new_client ~= nil then
-                -- Yay new connection :)
-                pipe.log("New connection " ..tostring(new_client))
-                CallEventScripts("directChatMessageReceived", "LinPipe: Accepted new connection :)")
-                if pcall(assert, new_client:settimeout(0)) then
-                    table.insert(pipe.clients, new_client)
-                    pipe.log("Accepted new connection "..tostring(new_client))
-                else
-                    pipe.log("Failed to accept new connection "..tostring(new_client))
+            -- Important: pipe x4_python_host reads all the time
+            -- Other pipes get only a read when they signalled a $Start_Reading cue
+
+            -- So if we want to accept new connections for other pipes we have to
+            --  piggyback on x4_python_host read request
+            if pipe.name == "x4_python_host" then
+                for i, socket in pairs(L.sockets) do 
+                    new_client, err = socket.server:accept()
+
+                    if err ~= nil then
+                        -- No new connection :(
+                        -- pipe.log("No new connection on " ..L.sockets[pipe_name].server:getsockname())
+                    elseif new_client ~= nil then
+                        -- Yay new connection :)
+                        pipe.log("New connection " ..tostring(new_client) .." for " ..socket.socket_filename)
+                        CallEventScripts("directChatMessageReceived", "LinPipe: Accepted new connection :)")
+                        if pcall(assert, new_client:settimeout(0)) then
+                            table.insert(socket.clients, new_client)
+                            pipe.log("Accepted new connection "..tostring(new_client))
+                        else
+                            pipe.log("Failed to accept new connection "..tostring(new_client))
+                        end
+                        -- have a break so other things have a chance to catch up
+                        coroutine.yield(status)
+                    end
                 end
             end
 
@@ -73,7 +106,7 @@ function Pipe:create(L)
             -- socket:select really does not like an empty table here
             if #pipe.clients > 0 then
                 -- The returned tables are doubly keyed both by integers and also by the sockets themselves
-                readable_sockets, writable_sockets, err = socket:select(pipe.clients, nil, 0.01)
+                readable_sockets, writable_sockets, err = pipe.socket:select(pipe.clients, nil, 0.01)
                 if err ~= nil then
                     pipe.log("No client available for reading: "..err)
                 end
@@ -87,12 +120,14 @@ function Pipe:create(L)
                     index = indexOf(pipe.clients, k)
                     -- pipe.log("Read from client " ..tostring(k) .." having index "..tostring(index))
                     client_msg, err = k:receive("*l")
+
+                    if client_msg and string.len(client_msg) > 0 then 
+                        status = client_msg
+                        pipe.log("Read "..tostring(string.len(status)) .." characters from client " ..tostring(k))
+                        coroutine.yield(status)
+                    end
                 end
                 
-                if client_msg and string.len(client_msg) > 0 then 
-                    status = client_msg
-                    pipe.log("Read "..tostring(string.len(status)) .." characters from client " ..tostring(k))
-                end
 
                 -- we do timeout all the time when the client has nothing to send
                 -- so do not set timeout as status for error _here_
@@ -115,8 +150,6 @@ function Pipe:create(L)
       end)
 
       L.SetLastError(L.ERROR_PIPE_CONNECTED)
-
-
     -- coroutine.resume(pipe.read_unix_socket_co)
     return pipe
 end
@@ -140,6 +173,8 @@ function Pipe:write(message)
 
         return 0
     end
+
+    -- self.log("Poking WRITE coroutine: "..self.name)
 
     for k, client in pairs(self.clients) do
         -- In case of error, the method returns nil, followed by an error message,
@@ -186,14 +221,17 @@ function Pipe:read()
 
     if status == "dead" then
         -- this recovers nicely and the game keeps going
-        self.log("Coroutine status: "..status)
-        self.L.SetLastError(self.L.ERROR_IO_PENDING)
+        if self.L.last_error ~= self.L.ERROR_IO_PENDING then
+            self.log("Coroutine status: "..status)
+            self.L.SetLastError(self.L.ERROR_IO_PENDING)
+        end
         result[1] = "ERROR"
         return result
     end
 
-    local is_running, data = coroutine.resume(self.read_unix_socket_co)
+    -- self.log("Poking READ coroutine: "..self.name)
 
+    local is_running, data = coroutine.resume(self.read_unix_socket_co)
 
     if is_running then
         if #self.clients == 0 and self.L.last_error == self.L.ERROR_NO_DATA then

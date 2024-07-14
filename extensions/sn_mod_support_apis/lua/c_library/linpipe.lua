@@ -24,9 +24,16 @@ local L = {
     debug = {
         print_to_log = true,
     },
-    socket_filename = "",
-    server = nil,
-    pipe = nil,
+    sockets = {
+--
+-- will hold a list of sockets by name
+-- having the following values:
+-- socket_filename = "",
+-- server = nil,
+-- clients = {},
+-- pipe = nil,
+    },
+
     retry_allowed = false,
     -- mimicking https://docs.microsoft.com/en-us/windows/win32/ipc/named-pipe-type-read-and-wait-modes
     -- in case Pipes checks for this
@@ -142,6 +149,7 @@ end
 
 local function create_socket_server(socket_filename, socket_unix)
 	local server = socket_unix()
+    server:setoption("reuseaddr", false)
 
     if server == nil then
         log("LuaSocket.unix could not be created - is lua5.1-socket installed?")
@@ -195,63 +203,69 @@ end
 Important: We can|want not really mimic the NamedPipe feature of X4 Python Pipe Server.
 From my understanding it works by reading the "magic" file `pipe_external.txt` of each
 module reported by X4 on connect and simply executes it's content. This kinda results in
-additional pipes (or not) depending on source in each extension. This links all _very hard_
+additional pipes (or not) depending on $Pipe_Name in each extension. This links all _very hard_
 not only to Python but also to Windows only and this is IMHO a very bad approach for a socket
 that should be by design agnostic of the language, tool, framework or even OS that connects to
-it. So what we do is kinda open a socket ourself and allowing anyone interested to connect.
+it. So what we do is open multiple sockets ourself and allowing anyone interested to connect.
 
-This has some drawbacks. For example we multiply the send data on each connection and it's not
-said that external apps will be able to deal with data that was not supposed for them in the
-first place (error handling).
+!! This completely bypasses the X4 Python Pipe Server requirement on Linux !!
 
-On reading we kinda will have to build a local buffer that is emptied with each subsequent read
+This is fine as long as we remember which `$Pipe_Name` was used already so each app gets their 
+very own socket file to use. This is probably the best approach in the long run. At least the 
+one app "X4-External-App", that I know of, has a handy .env file where the PIPE filename can be
+set by it's user. It also checks the received format and ignores data not suited for it.
+
+This has some drawbacks. It's up to the extention to signal a $Start_Reading cue and without
+we won't get any Read requests. This is bad since we check for new connections on read. There is
+however one pipe that checks for reads all the time: The "x4_python_host" pipe itself so what we
+do is that we piggyback on it's read requests and check all pipes for new connections during that
+time.
+
+On reading we may have to build a local buffer that is emptied with each subsequent read
 so we don't loose data - or we simply ignore the slight possibility of two clients talking to
-the server socket at the same moment. It MAY happen.
+the same server socket at the same moment. It MAY happen.
 
-Alternatively we may simply spawn multiple pipes. This is theoretically also fine as long as
-we remember which `pipe_name` was used already so each app gets their very own socket file
-to use. This is probably the best approach in the long run. At least the one app "X4-External-App"
-that I know of has a handy .env file where the PIPE variable can be set by it's user. It also checks
-the received format and ignores data not suited for it.
-
-At the moment we raise only one pipe server no matter how often this is requested.
-
-We may even do both.
-
-    …and also do UDP while we're on it.
+We may also do UDP while we're on it.
 --]]
 function L.open_pipe(pipe_name)
+    local t_pipe_name = explode(pipe_name, "\\")
+    t_pipe_name = t_pipe_name[#t_pipe_name]
+
     if(L.last_error == L.ERROR_MISSING_LIBRARY or L.last_error == L.ERROR_IO_DENIED) then
         -- no use in trying again
         return nil
     end
 
     -- We'll ignore filepath on Linux and use our own -- sorry
-    local t_filename = explode(pipe_name, "\\")
-    L.socket_filename = t_filename[#t_filename]
-    t_filename = nil
+    if not L.sockets[t_pipe_name] then
+        local socket_unix = require_socket_unix()
 
-    local socket_unix = require_socket_unix()
+        if not socket_unix then
+            log("Failed to load socket library")
+            log(" * Is lua5.1-socket installed?")
+            log(" * Did you symlink `/lib64/lua/5.1/socket` to `game/ui/core/lualibs/` or `sn_mod_support_apis/lua/c_library/` ?")
+            log("Hint: `ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/`")
+            log("WARN: lua5.4-socket does NOT work")
+            CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\nand linked to game/ui/core/lualibs/\nor sn_mod_support_apis/lua/c_library/")
+            return nil
+        end
 
-    if not socket_unix then
-        log("Failed to load socket library")
-        log(" * Is lua5.1-socket installed?")
-        log(" * Did you symlink `/lib64/lua/5.1/socket` to `game/ui/core/lualibs/` or `sn_mod_support_apis/lua/c_library/` ?")
-        log("Hint: `ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/`")
-        log("WARN: lua5.4-socket does NOT work")
-        CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\nand linked to game/ui/core/lualibs/\nor sn_mod_support_apis/lua/c_library/")
-    end
-
-    if (socket_unix and not L.server) then
-        L.server = create_socket_server(L.socket_filename, socket_unix)
-    end
-
-    if(L.server and not L.pipe) then
-        L.pipe = Pipe:create(L)
+        log("Preparing new socket " ..t_pipe_name)
+        L.sockets[t_pipe_name] = {
+            socket_filename = t_pipe_name,
+            server = nil,
+            clients = {},
+            pipe = nil,
+        }
+        L.sockets[t_pipe_name].server = create_socket_server(t_pipe_name, socket_unix)
+        L.sockets[t_pipe_name].pipe = Pipe:create(L, t_pipe_name)
+        log("Prepared new socket " ..L.sockets[t_pipe_name].pipe.name)
     end
 
     -- this returns a new instance of Pipe with write(message) close() read()
-    return L.pipe
+    log("Returning pipe " ..L.sockets[t_pipe_name].pipe.name)
+
+    return L.sockets[t_pipe_name].pipe
 end
 
 return L
