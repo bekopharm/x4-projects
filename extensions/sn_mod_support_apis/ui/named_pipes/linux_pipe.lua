@@ -291,4 +291,4 @@ function Pipe:close()
     return result
 end
 
-return Pipe
+Register_Require_Response("extensions.sn_mod_support_apis.ui.named_pipes.linux_pipe", Pipe)

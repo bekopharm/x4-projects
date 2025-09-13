@@ -15,8 +15,8 @@ ffi.cdef[[
 -- ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/
 -- Important: lua 5.4 socket lib does NOT work
 
-local Pipe = require("extensions.sn_mod_support_apis.lua.named_pipes.Linux_Pipe")
-local Config = require("extensions.sn_mod_support_apis.lua.userdata.Interface")
+local Pipe = require("extensions.sn_mod_support_apis.ui.named_pipes.linux_pipe")
+local Config = require("extensions.sn_mod_support_apis.ui.userdata.Interface")
 
 -- Table holding lib functions to be returned, or lib params that can
 -- be modified.
@@ -104,7 +104,7 @@ local function require_socket_unix()
     -- so a `ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs` should be fine once
     -- lua5.1-socket/compat-lua-libs are installed on the system
     if not string.find(package.cpath, "sn_mod_support_apis") then
-        package.cpath = "extensions/sn_mod_support_apis/lua/c_library/?.so;?.so;"..package.cpath
+        package.cpath = "extensions/sn_mod_support_apis/ui/c_library/?.so;?.so;"..package.cpath
     end
 
     DebugError("[LinPipe] looking for socket lib in the following paths: " ..package.cpath)
@@ -243,10 +243,10 @@ function L.open_pipe(pipe_name)
         if not socket_unix then
             log("Failed to load socket library")
             log(" * Is lua5.1-socket installed?")
-            log(" * Did you symlink `/lib64/lua/5.1/socket` to `game/ui/core/lualibs/` or `sn_mod_support_apis/lua/c_library/` ?")
+            log(" * Did you symlink `/lib64/lua/5.1/socket` to `game/ui/core/lualibs/` or `sn_mod_support_apis/ui/c_library/` ?")
             log("Hint: `ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/`")
             log("WARN: lua5.4-socket does NOT work")
-            CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\nand linked to game/ui/core/lualibs/\nor sn_mod_support_apis/lua/c_library/")
+            CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\nand linked to game/ui/core/lualibs/\nor sn_mod_support_apis/ui/c_library/")
             return nil
         end
 
@@ -258,6 +258,7 @@ function L.open_pipe(pipe_name)
             pipe = nil,
         }
         L.sockets[t_pipe_name].server = create_socket_server(t_pipe_name, socket_unix)
+        log("Looks like server started")
         L.sockets[t_pipe_name].pipe = Pipe:create(L, t_pipe_name)
         log("Prepared new socket " ..L.sockets[t_pipe_name].pipe.name)
     end
@@ -268,4 +269,4 @@ function L.open_pipe(pipe_name)
     return L.sockets[t_pipe_name].pipe
 end
 
-return L
+Register_Require_Response("extensions.sn_mod_support_apis.ui.c_library.linpipe", L)
