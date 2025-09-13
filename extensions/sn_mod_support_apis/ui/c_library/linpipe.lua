@@ -9,11 +9,10 @@ ffi.cdef[[
 -- TODO: Add some lib that provides an unlink function
 -- TODO: move socket creation to Linux_Pipe - we should only check here if lib is available
 -- TODO: Consider UDP instead of socket (or add an option)
--- TODO: make sure that the pipe server can be instantiated so we can raise multiple sockets
 
 -- dnf install lua5.1-socket compat-lua-libs
 -- dnf install luasocket
--- ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/
+-- cp /lib64/lua/5.1/socket/* /path/to/X4_Foundations/game/ui/core/lualibs/
 -- Important: lua 5.4 socket lib does NOT work
 
 local Pipe = require("extensions.sn_mod_support_apis.ui.named_pipes.linux_pipe")
@@ -257,10 +256,10 @@ function L.open_pipe(pipe_name)
         if not socket_unix then
             log("Failed to load socket library")
             log(" * Is lua5.1-socket installed?")
-            log(" * Did you symlink `/lib64/lua/5.1/socket` to `game/ui/core/lualibs/` or `sn_mod_support_apis/ui/c_library/` ?")
-            log("Hint: `ln -s /lib64/lua/5.1/socket /path/to/X4_Foundations/game/ui/core/lualibs/`")
+            log(" * Did you copy `/lib64/lua/5.1/socket/*` to `game/ui/core/lualibs/` or `sn_mod_support_apis/ui/c_library/` ?")
+            log("Hint: `cp /lib64/lua/5.1/socket/* /path/to/X4_Foundations/game/ui/core/lualibs/`")
             log("WARN: lua5.4-socket does NOT work")
-            CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\nand linked to game/ui/core/lualibs/\nor sn_mod_support_apis/ui/c_library/")
+            CallEventScripts("directChatMessageReceived", "LinPipe: LuaSocket not found!\nlua5.1-socket must be installed\n to game/ui/core/lualibs/\nor sn_mod_support_apis/ui/c_library/")
             return nil
         end
 
