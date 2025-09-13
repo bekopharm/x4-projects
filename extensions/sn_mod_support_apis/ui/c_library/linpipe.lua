@@ -2,6 +2,7 @@ local ffi = require("ffi")
 local C = ffi.C
 ffi.cdef[[
     bool DeleteSavegame(const char* filename);
+    const char* GetSaveFolderPath(void);
 ]]
 
 -- TODO: explain how to install lua5.1-socket
@@ -69,24 +70,37 @@ end
     MUST BE in the savegame folder. This is the reason we raise our socket
     right there.
 
-    However I found no way to obstain the full path to saves from any Lua
-    function so we have to ask the user for this (done in options menu for
-    Named Pipes API)
+    To inform the user where we raise our socket we do set the path in the
+    option menu of the Named Pipes API to whatever we got from the 
+    C.GetSaveFolderPath function hoping that this works also with the GOG
+    version (only verified for Steam and X4 > 7.5)
 ]]
 local function get_socket_path()
-    local socket_path = nil
-    local config = Config.Read_Userdata('sn_mod_support_apis', 'lin_pipe')
+    local socket_path = '/tmp/'
 
-    if config ~= nil then
-        socket_path = config.pipe_name_prefix_linux
+    local config = Config.Read_Userdata('sn_mod_support_apis', 'lin_pipe') or {
+        pipe_name_prefix_linux = '/tmp/'
+    }
+
+    local save_folder_path = ffi.string(C.GetSaveFolderPath())
+    if save_folder_path ~= nil and save_folder_path ~= "" and save_folder_path ~= config.pipe_name_prefix_linux then
+        log("WARN: Save folder path is " ..save_folder_path)        
+        log("WARN: but configured prefix path is " ..config.pipe_name_prefix_linux)
+        log("WARN: Overriding to save folder path")
+
+        config.pipe_name_prefix_linux = save_folder_path
+        Config.Write_Userdata('sn_mod_support_apis', 'lin_pipe', config)
     end
 
-    if socket_path == nil then
-        socket_path = "/tmp"
+    socket_path = config.pipe_name_prefix_linux
+
+    -- append / if needed
+    if socket_path:sub(-1) ~= "/" then
+        socket_path = socket_path.."/"
     end
 
     -- check for save in path name
-    if socket_path:match("/save") then
+    if socket_path:match("/save/") then
         log("Lingering sockets in savegame folder are deleted automatically")
     else
         DebugError("[LinPipe] WARN: Path to savegame folder not provided, socket may linger and has to be deleted manually from "..socket_path)
@@ -95,7 +109,7 @@ local function get_socket_path()
         CallEventScripts("directChatMessageReceived", "LinPipe: has to be deleted manually!")
     end
 
-    return socket_path..'/'
+    return socket_path
 end
 
 

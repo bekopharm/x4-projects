@@ -963,16 +963,12 @@ TODO:
             $cellBGColor   = 'Helper.color.transparent60',
             ]"/>
       <signal_cue_instantly
-        cue="md.Simple_Menu_API.Make_EditBox"
+        cue="md.Simple_Menu_API.Make_Text"
         param = "table[
             $col           = 2,
-            $id            = 'pipe_name_prefix_linux',
-            $text          = table[ $text = '' + Globals.$pipe_name_prefix_linux, $color = 'Helper.color.white' ],
-            $defaultText   = '/full/path/to/.config/EgoSoft/X4/[userid/]save',
-            $onTextChanged = Handle_Socket_Path_Changed_Action,
+            $text          = @Globals.$pipe_name_prefix_linux,
             $mouseOverText = Text.$pipe_prefix_mouseover,
             $cellBGColor   = 'Helper.color.transparent60',
-            $maxChars      = 200,
             ]"/>
       
       <!-- Loop over registered pipe handler cues. -->
